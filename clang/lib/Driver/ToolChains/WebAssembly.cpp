@@ -129,33 +129,6 @@ void wasm::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   C.addCommand(std::make_unique<Command>(JA, *this,
                                          ResponseFileSupport::AtFileCurCP(),
                                          Linker, CmdArgs, Inputs, Output));
-
-  // When optimizing, if wasm-opt is available, run it.
-  if (Arg *A = Args.getLastArg(options::OPT_O_Group)) {
-    auto WasmOptPath = ToolChain.GetProgramPath("wasm-opt");
-    if (WasmOptPath != "wasm-opt") {
-      StringRef OOpt = "s";
-      if (A->getOption().matches(options::OPT_O4) ||
-          A->getOption().matches(options::OPT_Ofast))
-        OOpt = "4";
-      else if (A->getOption().matches(options::OPT_O0))
-        OOpt = "0";
-      else if (A->getOption().matches(options::OPT_O))
-        OOpt = A->getValue();
-
-      if (OOpt != "0") {
-        const char *WasmOpt = Args.MakeArgString(WasmOptPath);
-        ArgStringList CmdArgs;
-        CmdArgs.push_back(Output.getFilename());
-        CmdArgs.push_back(Args.MakeArgString(llvm::Twine("-O") + OOpt));
-        CmdArgs.push_back("-o");
-        CmdArgs.push_back(Output.getFilename());
-        C.addCommand(std::make_unique<Command>(
-            JA, *this, ResponseFileSupport::AtFileCurCP(), WasmOpt, CmdArgs,
-            Inputs, Output));
-      }
-    }
-  }
 }
 
 /// Given a base library directory, append path components to form the
