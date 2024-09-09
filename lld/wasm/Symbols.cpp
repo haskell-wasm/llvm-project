@@ -233,12 +233,6 @@ bool Symbol::isExported() const {
   if (!isDefined() || isShared() || isLocal())
     return false;
 
-  // Shared libraries must export all weakly defined symbols
-  // in case they contain the version that will be chosen by
-  // the dynamic linker.
-  if (config->shared && isLive() && isWeak() && !isHidden())
-    return true;
-
   if (config->exportAll || (config->exportDynamic && !isHidden()))
     return true;
 

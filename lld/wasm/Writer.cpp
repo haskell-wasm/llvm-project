@@ -735,7 +735,7 @@ static bool shouldImport(Symbol *sym) {
   // and export the symbol.
   if (config->shared && sym->isWeak() && !sym->isUndefined() &&
       !sym->isHidden())
-    return true;
+    return false;
   if (sym->isShared())
     return true;
   if (!sym->isUndefined())
