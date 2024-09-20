@@ -1457,37 +1457,76 @@ void Writer::createStartFunction() {
 // any user code (i.e. before `__wasm_call_ctors`).
 void Writer::createApplyDataRelocationsFunction() {
   LLVM_DEBUG(dbgs() << "createApplyDataRelocationsFunction\n");
-  // First write the body's contents to a string.
-  std::string bodyContent;
+
+  std::vector<std::string> bodies;
+
   {
-    raw_string_ostream os(bodyContent);
-    writeUleb128(os, 0, "num locals");
     for (const OutputSegment *seg : segments)
       if (!config->sharedMemory || !seg->isTLS())
         for (const InputChunk *inSeg : seg->inputSegments)
-          inSeg->generateRelocationCode(os);
-
+          inSeg->generateRelocationCode(bodies);
+    if (bodies.empty()) {
+      bodies.emplace_back(std::string());
+      raw_string_ostream os(bodies.back());
+      writeUleb128(os, 0, "num locals");
+    }
+    raw_string_ostream os(bodies.back());
     writeU8(os, WASM_OPCODE_END, "END");
   }
 
-  createFunction(WasmSym::applyDataRelocs, bodyContent);
+  if (bodies.size() == 1) {
+    createFunction(WasmSym::applyDataRelocs, bodies.back());
+    return;
+  }
+
+  std::string body;
+  raw_string_ostream os(body);
+  writeUleb128(os, 0, "num locals");
+
+  for (std::size_t i = 0; i < bodies.size(); ++i) {
+    static WasmSignature nullSignature = {{}, {}};
+
+    auto &name = *make<std::string>("__wasm_apply_data_relocs_" + std::to_string(i));
+    auto *func = make<SyntheticFunction>(nullSignature, name);
+    auto *sym = symtab->addSyntheticFunction(
+      name,
+      WASM_SYMBOL_VISIBILITY_HIDDEN,
+      func);
+    sym->markLive();
+    out.functionSec->addFunction(func);
+    createFunction(sym, bodies[i]);
+
+    writeU8(os, WASM_OPCODE_CALL, "CALL");
+    writeUleb128(os, sym->getFunctionIndex(), "function index");
+  }
+
+  writeU8(os, WASM_OPCODE_END, "END");
+
+  createFunction(WasmSym::applyDataRelocs, body);
 }
 
 void Writer::createApplyTLSRelocationsFunction() {
   LLVM_DEBUG(dbgs() << "createApplyTLSRelocationsFunction\n");
-  std::string bodyContent;
+
+  std::vector<std::string> bodies;
+
   {
-    raw_string_ostream os(bodyContent);
-    writeUleb128(os, 0, "num locals");
     for (const OutputSegment *seg : segments)
       if (seg->isTLS())
         for (const InputChunk *inSeg : seg->inputSegments)
-          inSeg->generateRelocationCode(os);
-
+          inSeg->generateRelocationCode(bodies);
+    if (bodies.empty()) {
+      bodies.emplace_back(std::string());
+      raw_string_ostream os(bodies.back());
+      writeUleb128(os, 0, "num locals");
+    }
+    raw_string_ostream os(bodies.back());
     writeU8(os, WASM_OPCODE_END, "END");
   }
 
-  createFunction(WasmSym::applyTLSRelocs, bodyContent);
+  assert(bodies.size() == 1);
+
+  createFunction(WasmSym::applyTLSRelocs, bodies.back());
 }
 
 // Similar to createApplyDataRelocationsFunction but generates relocation code

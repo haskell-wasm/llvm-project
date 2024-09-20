@@ -361,7 +361,7 @@ uint64_t InputChunk::getVA(uint64_t offset) const {
 // Generate code to apply relocations to the data section at runtime.
 // This is only called when generating shared libraries (PIC) where address are
 // not known at static link time.
-void InputChunk::generateRelocationCode(raw_ostream &os) const {
+void InputChunk::generateRelocationCode(std::vector<std::string> &bodies) const {
   LLVM_DEBUG(dbgs() << "generating runtime relocations: " << name
                     << " count=" << relocations.size() << "\n");
 
@@ -375,6 +375,18 @@ void InputChunk::generateRelocationCode(raw_ostream &os) const {
   // TODO(sbc): Encode the relocations in the data section and write a loop
   // here to apply them.
   for (const WasmRelocation &rel : relocations) {
+    if (bodies.empty() || bodies.back().size() >= 7654300) {
+      bodies.emplace_back(std::string());
+      raw_string_ostream os(bodies.back());
+      writeUleb128(os, 0, "num locals");
+      if (bodies.size() >= 2) {
+        raw_string_ostream os(bodies[bodies.size() - 2]);
+        writeU8(os, WASM_OPCODE_END, "END");
+      }
+    }
+
+    raw_string_ostream os(bodies.back());
+
     uint64_t offset = getVA(rel.Offset) - getInputSectionOffset();
 
     Symbol *sym = file->getSymbol(rel);
