@@ -18,6 +18,7 @@
 #include "llvm/Option/ArgList.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/VirtualFileSystem.h"
 
 using namespace clang::driver;
@@ -158,47 +159,36 @@ void wasm::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-o");
   CmdArgs.push_back(Output.getFilename());
 
-  if (Args.hasFlag(options::OPT_wasm_opt, options::OPT_no_wasm_opt, true)) {
+  CmdArgs.push_back("--keep-section=target_features");
+
+  C.addCommand(std::make_unique<Command>(JA, *this,
+                                         ResponseFileSupport::AtFileCurCP(),
+                                         Linker, CmdArgs, Inputs, Output));
+
+  if (Args.hasFlag(options::OPT_wasm_opt, options::OPT_no_wasm_opt,
+                   Args.hasArg(options::OPT_shared) &&
+                       llvm::sys::Process::GetEnv("WASM_SO_OPT"))) {
     // When optimizing, if wasm-opt is available, run it.
     std::string WasmOptPath;
-    if (Args.getLastArg(options::OPT_O_Group)) {
-      WasmOptPath = ToolChain.GetProgramPath("wasm-opt");
-      if (WasmOptPath == "wasm-opt") {
-        WasmOptPath = {};
-      }
+    WasmOptPath = ToolChain.GetProgramPath("wasm-opt");
+    if (WasmOptPath == "wasm-opt") {
+      WasmOptPath = {};
     }
 
     if (!WasmOptPath.empty()) {
-      CmdArgs.push_back("--keep-section=target_features");
-    }
+      StringRef OOpt = "4";
 
-    C.addCommand(std::make_unique<Command>(JA, *this,
-                                           ResponseFileSupport::AtFileCurCP(),
-                                           Linker, CmdArgs, Inputs, Output));
-
-    if (Arg *A = Args.getLastArg(options::OPT_O_Group)) {
-      if (!WasmOptPath.empty()) {
-        StringRef OOpt = "s";
-        if (A->getOption().matches(options::OPT_O4) ||
-            A->getOption().matches(options::OPT_Ofast))
-          OOpt = "4";
-        else if (A->getOption().matches(options::OPT_O0))
-          OOpt = "0";
-        else if (A->getOption().matches(options::OPT_O))
-          OOpt = A->getValue();
-
-        if (OOpt != "0") {
-          const char *WasmOpt = Args.MakeArgString(WasmOptPath);
-          ArgStringList OptArgs;
-          OptArgs.push_back(Output.getFilename());
-          OptArgs.push_back(Args.MakeArgString(llvm::Twine("-O") + OOpt));
-          OptArgs.push_back("-o");
-          OptArgs.push_back(Output.getFilename());
-          C.addCommand(std::make_unique<Command>(
-              JA, *this, ResponseFileSupport::AtFileCurCP(), WasmOpt, OptArgs,
-              Inputs, Output));
-        }
-      }
+      const char *WasmOpt = Args.MakeArgString(WasmOptPath);
+      ArgStringList OptArgs;
+      OptArgs.push_back(Output.getFilename());
+      OptArgs.push_back("--low-memory-unused");
+      OptArgs.push_back("--converge");
+      OptArgs.push_back(Args.MakeArgString(llvm::Twine("-O") + OOpt));
+      OptArgs.push_back("-o");
+      OptArgs.push_back(Output.getFilename());
+      C.addCommand(std::make_unique<Command>(JA, *this,
+                                             ResponseFileSupport::AtFileCurCP(),
+                                             WasmOpt, OptArgs, Inputs, Output));
     }
   }
 }
