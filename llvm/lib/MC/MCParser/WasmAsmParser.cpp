@@ -227,7 +227,13 @@ public:
     if (WasmSym->isFunction()) {
       // Ignore .size directives for function symbols.  They get their size
       // set automatically based on their content.
-      Warning(Loc, ".size directive ignored for function symbols");
+      //
+      // Upstream LLVM treats this as a warning, we turn this into an
+      // error since it almost certainly signals severely malformed
+      // assembly due to miscompilation, and data/function symbol kind
+      // confusion is not always caught at link-time and might
+      // manifest as wasm runtime crashes :/
+      Error(Loc, ".size directive ignored for function symbols");
     } else {
       getStreamer().emitELFSize(Sym, Expr);
     }
